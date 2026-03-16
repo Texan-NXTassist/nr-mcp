@@ -185,11 +185,16 @@ async def get_node_config(client: NRClient, node_id: str) -> dict:
 
 
 async def get_flow_context(client: NRClient, flow_id: str, key: str | None = None) -> dict:
-    """Read flow context."""
-    data = await client.get_context(flow_id, key)
+    """Read flow context. API returns {memory: {key: {msg: value, format: type}}}."""
+    data = await client.get_context(flow_id)
+    memory = data.get("memory", {})
+
     if key:
-        return {"flow_id": flow_id, "key": key, "value": data}
-    return {"flow_id": flow_id, "keys": data}
+        if key not in memory:
+            raise NRNotFoundError(f"Context key not found: '{key}'")
+        value = memory[key].get("msg")
+        return {"flow_id": flow_id, "key": key, "value": value}
+    return {"flow_id": flow_id, "keys": list(memory.keys())}
 
 
 async def safe_deploy(client: NRClient, node_id: str, fields: dict,

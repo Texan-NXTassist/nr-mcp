@@ -163,7 +163,7 @@
 }
 ```
 
-**API endpoint:** `GET /flow/:id/context/:key` (this one is safe — it's a read-only GET, not the broken PUT).
+**API endpoint:** `GET /context/flow/:id` — returns `{memory: {key: {msg: value, format: type}}}`. No separate endpoint for single key; we fetch full context and filter.
 
 ---
 

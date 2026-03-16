@@ -59,11 +59,9 @@ class NRClient:
         data = r.json()
         return data.get("rev", "")
 
-    async def get_context(self, flow_id: str, key: str | None = None) -> dict:
-        """GET /flow/:id/context[/:key] — read flow context."""
-        path = f"/flow/{flow_id}/context"
-        if key:
-            path += f"/{key}"
+    async def get_context(self, flow_id: str) -> dict:
+        """GET /context/flow/:id — read flow context. Returns raw API response."""
+        path = f"/context/flow/{flow_id}"
         r = await self._client.get(path)
         self._check_response(r)
         return r.json()
