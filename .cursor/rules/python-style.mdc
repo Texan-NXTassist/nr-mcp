@@ -1,0 +1,68 @@
+---
+description: Python coding style for nr-mcp — async, type hints, error handling
+globs: "*.py"
+---
+
+# Python Style Rules
+
+## Type hints everywhere
+- All function signatures MUST have full type hints (params + return)
+- Use `str | None` syntax (not `Optional[str]`) — Python 3.11+ target
+- Use `list[dict]` not `List[Dict]` (lowercase generics)
+
+```python
+# Good
+async def get_flow(client: NRClient, name_or_id: str) -> dict:
+
+# Bad
+async def get_flow(client, name_or_id):
+```
+
+## Async by default
+- All tool functions are `async def` — Node-RED API calls are I/O bound
+- Use `httpx.AsyncClient` (already configured in NRClient)
+- Never use `requests` or synchronous HTTP
+
+## Error handling
+- Raise specific errors: `NRAuthError`, `NRConflictError`, `NRNotFoundError`
+- Server catches all exceptions in `call_tool()` and wraps in JSON
+- Never catch generic `Exception` in tool functions — let it bubble to server
+
+```python
+# Good — specific error
+if not node:
+    raise NRNotFoundError(f"Node not found: {node_id}")
+
+# Bad — generic handling in tool
+try:
+    ...
+except Exception:
+    return {"error": "something went wrong"}
+```
+
+## Naming conventions
+- Files: `snake_case.py`
+- Functions: `snake_case` (e.g., `get_flow_summary`, `safe_deploy`)
+- Classes: `PascalCase` (e.g., `NRClient`, `NRError`)
+- Constants: `UPPER_SNAKE` (e.g., `IMMUTABLE_FIELDS`)
+
+## Imports
+- Standard library first, then third-party, then local
+- Use relative imports within the package: `from .client import NRClient`
+
+## Docstrings
+- All public functions get a one-line docstring
+- Multi-line only when there's non-obvious behavior to explain
+- No docstrings on private helpers if the name is self-explanatory
+
+## No magic values
+- Use constants or config for URLs, timeouts, limits
+- `max_results` default in function signature, not buried in code
+
+## Commits
+Conventional Commits format:
+- `feat:` new tool or capability
+- `fix:` bug fix
+- `refactor:` code restructure
+- `test:` tests
+- `docs:` documentation
