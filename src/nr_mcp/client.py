@@ -66,6 +66,42 @@ class NRClient:
         self._check_response(r)
         return r.json()
 
+    async def inject(self, node_id: str) -> bool:
+        """POST /inject/:id — trigger an inject node."""
+        resp = await self._client.post(f"/inject/{node_id}")
+        if resp.status_code == 200:
+            return True
+        elif resp.status_code == 404:
+            raise NRNotFoundError(f"Inject node '{node_id}' not found")
+        else:
+            raise NRError(f"Inject failed: {resp.status_code} {resp.text}")
+
+    async def get_nodes(self) -> list[dict]:
+        """GET /nodes — list all installed node modules and types."""
+        resp = await self._client.get(
+            "/nodes",
+            headers={"Accept": "application/json", "Node-RED-API-Version": "v2"},
+        )
+        self._check_response(resp)
+        return resp.json()
+
+    async def install_module(self, module_name: str) -> dict:
+        """POST /nodes — install a new npm module."""
+        resp = await self._client.post(
+            "/nodes",
+            json={"module": module_name},
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            timeout=120.0,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+        elif resp.status_code == 400:
+            raise NRError(f"Module '{module_name}' not found or invalid")
+        elif resp.status_code == 409:
+            raise NRError(f"Module '{module_name}' already installed")
+        else:
+            raise NRError(f"Install failed: {resp.status_code} {resp.text}")
+
     def _check_response(self, r: httpx.Response):
         if r.status_code in (401, 403):
             raise NRAuthError(f"Authentication failed ({r.status_code}). Check NR_USER, NR_PASS, NR_URL.")

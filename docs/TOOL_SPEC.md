@@ -223,6 +223,159 @@
 
 ---
 
+## Tool 8: `nr_get_installed_modules`
+**Purpose:** List installed Node-RED modules and their node types. Use before creating nodes to know what types are available.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | string | no | Filter by module name or node type containing this string |
+
+**Returns:**
+```json
+{
+  "modules": [
+    {
+      "name": "node-red-contrib-home-assistant-websocket",
+      "version": "0.72.2",
+      "types": ["ha-sensor", "ha-entity-config", "ha-api", ...],
+      "enabled": true
+    },
+    {
+      "name": "node-red-dashboard",
+      "version": "3.6.5",
+      "types": ["ui_tab", "ui_group", "ui_chart", ...],
+      "enabled": true
+    }
+  ],
+  "total": 2,
+  "query": null
+}
+```
+
+**API endpoint:** `GET /nodes` with `Accept: application/json`, `Node-RED-API-Version: v2`
+
+---
+
+## Tool 9: `nr_inject`
+**Purpose:** Trigger an inject node to fire immediately. Use to test flows after deploy.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `node_id` | string | yes | ID of inject node to trigger |
+
+**Returns:**
+```json
+{
+  "success": true,
+  "node_id": "abc123",
+  "node_name": "Every 30min",
+  "message": "Inject triggered"
+}
+```
+
+**Errors:** Node not found → NOT_FOUND. Node not type "inject" → VALIDATION.
+
+**API endpoint:** `POST /inject/:id`
+
+---
+
+## Tool 10: `nr_create_nodes`
+**Purpose:** Create one or more new nodes/groups in a single deploy. Batch operation for efficiency.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `nodes` | list[dict] | yes | Node dicts. Each must have `id`, `type`, `z` (tab ID; `""` for config nodes) |
+| `description` | string | no | Optional deploy note |
+
+**Required node fields:** `id` (unique), `type` (e.g. `function`, `inject`, `group`), `z` (target tab ID; empty for global config nodes).
+
+**Returns:**
+```json
+{
+  "success": true,
+  "created": 2,
+  "node_ids": ["my_inject_01", "my_http_01"],
+  "rev": "new-rev-hash",
+  "description": "Add API fetch nodes to Weather tab"
+}
+```
+
+**Errors:** Missing id/type/z → VALIDATION. Tab not found → VALIDATION. ID collision → VALIDATION. 409 Conflict → retried once automatically.
+
+**Algorithm:** GET /flows → validate → append nodes → POST /flows. Single retry on 409.
+
+---
+
+## Tool 11: `nr_delete_nodes`
+**Purpose:** Delete one or more nodes by ID. Cleans up group.nodes and wires references.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `node_ids` | list[string] | yes | IDs of nodes to delete |
+| `description` | string | no | Optional deploy note |
+
+**Returns:**
+```json
+{
+  "success": true,
+  "deleted": 2,
+  "node_ids": ["n1", "n2"],
+  "rev": "new-rev-hash"
+}
+```
+
+**Safety:** Refuses to delete tabs. Use a separate flow to remove all nodes first.
+
+**Errors:** Nodes not found → VALIDATION. Attempt to delete tab → VALIDATION. 409 Conflict → retried once automatically.
+
+---
+
+## Tool 12: `nr_install_module`
+**Purpose:** Install a new Node-RED module (npm package) from the registry.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `module_name` | string | yes | npm package name (e.g. `node-red-dashboard`) |
+
+**Returns:**
+```json
+{
+  "success": true,
+  "module": "node-red-dashboard",
+  "version": "3.6.5",
+  "types": ["ui_tab", "ui_group", ...],
+  "message": "Module 'node-red-dashboard' installed successfully"
+}
+```
+
+**Errors:** Invalid name (empty, contains space) → VALIDATION. Module not found → VALIDATION. Already installed → VALIDATION.
+
+**Note:** Installation may take 30-60 seconds. Uses 120s timeout.
+
+**API endpoint:** `POST /nodes` with `{"module": "module-name"}`
+
+---
+
+## Tool 13: `nr_get_debug_output`
+**Purpose:** Read debug output from flow context (v1). Use when a flow has a catch node that stores errors/debug data to flow context.
+
+**Parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `flow_id` | string | yes | Tab ID |
+| `key` | string | no | Context key (null = list all keys) |
+
+**Returns:** Same format as `nr_get_flow_context` — either `{flow_id, keys: [...]}` or `{flow_id, key, value}`.
+
+**Usage pattern:** Add a catch node + function node that stores last N errors to flow context. Trigger flow with `nr_inject`, then read via this tool. For richer real-time debug, WebSocket v2 is planned.
+
+---
+
 ## Error Codes (all tools)
 
 | Code | Meaning |

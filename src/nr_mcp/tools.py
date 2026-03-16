@@ -3,7 +3,7 @@
 All tools fetch fresh data on each call (no caching).
 """
 
-from .client import NRClient, NRNotFoundError, NRConflictError
+from .client import NRClient, NRError, NRNotFoundError, NRConflictError
 
 
 async def get_flow_summary(client: NRClient) -> dict:
@@ -243,3 +243,174 @@ async def safe_deploy(client: NRClient, node_id: str, fields: dict,
         "fields_updated": list(fields.keys()),
         "tab_order_preserved": True,
     }
+
+
+async def get_installed_modules(client: NRClient, query: str | None) -> dict:
+    """List installed Node-RED modules and their node types."""
+    raw = await client.get_nodes()
+
+    modules = []
+    for mod in raw:
+        name = mod.get("name", mod.get("id", "unknown"))
+        version = mod.get("version", "?")
+        types = mod.get("types", [])
+
+        if not types and "nodes" in mod:
+            types = []
+            for n in mod["nodes"]:
+                types.extend(n.get("types", []))
+
+        if query:
+            q = query.lower()
+            if q not in name.lower() and not any(q in t.lower() for t in types):
+                continue
+
+        modules.append({
+            "name": name,
+            "version": version,
+            "types": types,
+            "enabled": mod.get("enabled", True),
+        })
+
+    return {
+        "modules": modules,
+        "total": len(modules),
+        "query": query,
+    }
+
+
+async def inject_node(client: NRClient, node_id: str) -> dict:
+    """Trigger an inject node to fire immediately."""
+    flows, _ = await client.get_flows()
+    node = next((f for f in flows if f["id"] == node_id), None)
+    if not node:
+        raise NRNotFoundError(f"Node '{node_id}' not found")
+    if node.get("type") != "inject":
+        raise NRError(f"Node '{node_id}' is type '{node.get('type')}', not 'inject'")
+
+    await client.inject(node_id)
+
+    return {
+        "success": True,
+        "node_id": node_id,
+        "node_name": node.get("name", ""),
+        "message": "Inject triggered",
+    }
+
+
+async def create_nodes(client: NRClient, nodes: list[dict], description: str | None) -> dict:
+    """Create one or more new nodes/groups in a single deploy."""
+    for n in nodes:
+        if not n.get("id") or not n.get("type"):
+            raise NRError(f"Node missing required 'id' or 'type': {n}")
+        if "z" not in n and n["type"] not in ("tab", "subflow"):
+            raise NRError(f"Node '{n['id']}' missing 'z' (target tab ID)")
+
+    flows, rev = await client.get_flows()
+
+    tab_ids = {f["id"] for f in flows if f.get("type") == "tab"}
+    for n in nodes:
+        z = n.get("z", "")
+        if z and z not in tab_ids and n["type"] not in ("tab", "subflow"):
+            raise NRError(f"Target tab '{z}' not found for node '{n['id']}'")
+
+    existing_ids = {f["id"] for f in flows}
+    for n in nodes:
+        if n["id"] in existing_ids:
+            raise NRError(f"Node ID '{n['id']}' already exists")
+
+    modified_flows = flows + nodes
+
+    try:
+        new_rev = await client.post_flows(modified_flows, rev)
+    except NRConflictError:
+        flows, rev = await client.get_flows()
+        existing_ids = {f["id"] for f in flows}
+        for n in nodes:
+            if n["id"] in existing_ids:
+                raise NRError(f"Node ID '{n['id']}' already exists (after conflict retry)")
+        modified_flows = flows + nodes
+        new_rev = await client.post_flows(modified_flows, rev)
+
+    return {
+        "success": True,
+        "created": len(nodes),
+        "node_ids": [n["id"] for n in nodes],
+        "rev": new_rev,
+        "description": description,
+    }
+
+
+async def delete_nodes(client: NRClient, node_ids: list[str], description: str | None) -> dict:
+    """Delete one or more nodes by ID. Cleans up group.nodes and wires references."""
+    flows, rev = await client.get_flows()
+
+    ids_to_delete = set(node_ids)
+    existing_ids = {f["id"] for f in flows}
+
+    missing = ids_to_delete - existing_ids
+    if missing:
+        raise NRError(f"Nodes not found: {missing}")
+
+    for f in flows:
+        if f["id"] in ids_to_delete and f.get("type") == "tab":
+            raise NRError(f"Refusing to delete tab '{f['id']}'. Remove all nodes first.")
+
+    new_flows = [f for f in flows if f["id"] not in ids_to_delete]
+
+    for f in new_flows:
+        if f.get("type") == "group" and "nodes" in f:
+            f["nodes"] = [nid for nid in f["nodes"] if nid not in ids_to_delete]
+
+    for f in new_flows:
+        if "wires" in f:
+            f["wires"] = [
+                [w for w in output if w not in ids_to_delete]
+                for output in f["wires"]
+            ]
+
+    try:
+        new_rev = await client.post_flows(new_flows, rev)
+    except NRConflictError:
+        flows, rev = await client.get_flows()
+        ids_to_delete = set(node_ids)
+        new_flows = [f for f in flows if f["id"] not in ids_to_delete]
+        for f in new_flows:
+            if f.get("type") == "group" and "nodes" in f:
+                f["nodes"] = [nid for nid in f["nodes"] if nid not in ids_to_delete]
+        for f in new_flows:
+            if "wires" in f:
+                f["wires"] = [
+                    [w for w in output if w not in ids_to_delete]
+                    for output in f["wires"]
+                ]
+        new_rev = await client.post_flows(new_flows, rev)
+
+    return {
+        "success": True,
+        "deleted": len(node_ids),
+        "node_ids": node_ids,
+        "rev": new_rev,
+    }
+
+
+async def install_module(client: NRClient, module_name: str) -> dict:
+    """Install a new Node-RED module from the registry."""
+    if not module_name or " " in module_name:
+        raise NRError(f"Invalid module name: '{module_name}'")
+
+    result = await client.install_module(module_name)
+
+    return {
+        "success": True,
+        "module": module_name,
+        "version": result.get("version", "unknown"),
+        "types": result.get("types", []),
+        "message": f"Module '{module_name}' installed successfully",
+    }
+
+
+async def get_debug_output(client: NRClient, flow_id: str, key: str | None = None) -> dict:
+    """Read debug output from flow context (v1). Use when a flow has a catch node
+    that stores errors/debug data to flow context. Pass key=None to list all keys."""
+    return await get_flow_context(client, flow_id, key)
