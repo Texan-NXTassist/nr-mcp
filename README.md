@@ -1,5 +1,7 @@
 # nr-mcp
 
+<!-- mcp-name: io.github.texan-nxtassist/nr-mcp -->
+
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants interact with [Node-RED](https://nodered.org) — read flows, search nodes, edit function code, deploy changes safely, and manage modules.
 
 Built to solve real problems: the existing Node-RED MCP implementations use `PUT /flow/:id` which **reorders your tabs**. nr-mcp uses the correct `GET → POST /flows` pattern with optimistic locking, so your tab order is always preserved.
@@ -39,13 +41,19 @@ Built to solve real problems: the existing Node-RED MCP implementations use `PUT
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - Node-RED instance with [Admin API](https://nodered.org/docs/api/admin/) enabled
 
+### Install from PyPI
+
+```bash
+pip install nr-mcp
+```
+
 ### Install with uv (recommended)
 
 ```bash
-uv tool install git+https://github.com/Texan-NXTassist/nr-mcp.git
+uv tool install nr-mcp
 ```
 
-Or from a local clone:
+Or from source:
 
 ```bash
 git clone https://github.com/Texan-NXTassist/nr-mcp.git
@@ -54,12 +62,6 @@ uv tool install .
 ```
 
 This creates the `nr-mcp` command in `~/.local/bin/`.
-
-### Install with pip
-
-```bash
-pip install git+https://github.com/Texan-NXTassist/nr-mcp.git
-```
 
 ## Configuration
 
