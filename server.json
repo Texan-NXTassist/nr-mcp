@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.texan-nxtassist/nr-mcp",
+  "name": "io.github.Texan-NXTassist/nr-mcp",
   "description": "MCP server for Node-RED — safe deploy, optimistic locking, smart search, 13 tools",
   "repository": {
     "url": "https://github.com/Texan-NXTassist/nr-mcp",
