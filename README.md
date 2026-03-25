@@ -1,6 +1,6 @@
 # nr-mcp
 
-<!-- mcp-name: io.github.texan-nxtassist/nr-mcp -->
+<!-- mcp-name: io.github.Texan-NXTassist/nr-mcp -->
 
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI assistants interact with [Node-RED](https://nodered.org) — read flows, search nodes, edit function code, deploy changes safely, and manage modules.
 
