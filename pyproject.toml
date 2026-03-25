@@ -9,7 +9,7 @@ description = "MCP server for Node-RED — safe deploy with optimistic locking, 
 requires-python = ">=3.11"
 license = "MIT"
 authors = [
-    { name = "Bartosz Zymon", email = "bartosz@nxtassist.ai" },
+    { name = "NXTAssist.ai" },
 ]
 readme = "README.md"
 keywords = ["mcp", "node-red", "ai", "claude", "automation", "iot", "model-context-protocol"]
