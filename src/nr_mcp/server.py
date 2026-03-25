@@ -95,7 +95,7 @@ async def nr_get_node_config(node_id: str) -> str:
 
 @mcp.tool()
 async def nr_get_flow_context(flow_id: str, key: str | None = None) -> str:
-    """Read Node-RED flow context (e.g. SLC factors, PV targets). Pass key=null to list all keys."""
+    """Read Node-RED flow context variables. Pass key=null to list all keys, or a specific key to get its value."""
     try:
         result = await tools.get_flow_context(client, flow_id, key)
         return _handle_result(result)
@@ -111,7 +111,7 @@ async def nr_safe_deploy(
     fields: dict,
     description: str | None = None,
 ) -> str:
-    """Deploy changes to a Node-RED node with optimistic locking. Uses correct GET→POST pattern (never PUT). Preserves tab order."""
+    """Deploy changes to a Node-RED node with optimistic locking. Uses correct GET\u2192POST pattern (never PUT). Preserves tab order."""
     try:
         result = await tools.safe_deploy(
             client,
@@ -194,7 +194,7 @@ async def nr_install_module(module_name: str) -> str:
 
 @mcp.tool()
 async def nr_get_debug_output(flow_id: str, key: str | None = None) -> str:
-    """Read debug output from flow context. Use when a flow has a catch node that stores errors/debug data to flow context (e.g. key 'debug_messages'). Pass key=null to list all context keys. Requires flow_id (tab ID). Trigger flow with nr_inject first, then read this."""
+    """Read debug output from flow context. Use when a flow has a catch node that stores errors/debug data to flow context. Pass key=null to list all context keys. Trigger flow with nr_inject first, then read this."""
     try:
         result = await tools.get_debug_output(client, flow_id, key)
         return _handle_result(result)

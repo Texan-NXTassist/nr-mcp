@@ -8,16 +8,16 @@
 **Returns:**
 ```json
 {
-  "total_nodes": 1731,
-  "total_tabs": 14,
+  "total_nodes": 450,
+  "total_tabs": 8,
   "tabs": [
     {
-      "id": "0b97b524508685f2",
-      "label": "AC DC",
-      "node_count": 154,
+      "id": "tab-id-1",
+      "label": "Home Automation",
+      "node_count": 85,
       "groups": [
-        {"id": "g1", "label": "PV Smart Charge", "node_count": 47},
-        {"id": "g2", "label": "Energy Monitor", "node_count": 31}
+        {"id": "g1", "label": "Lighting Control", "node_count": 23},
+        {"id": "g2", "label": "Climate", "node_count": 15}
       ]
     }
   ]
@@ -32,23 +32,23 @@
 **Parameters:**
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name_or_id` | string | yes | Tab name (e.g., "AC DC") or tab ID |
+| `name_or_id` | string | yes | Tab name (e.g., "Home Automation") or tab ID |
+
+**Name resolution:** Case-insensitive partial match. "home" matches "Home Automation". If ambiguous → returns error with matching tab names.
 
 **Returns:**
 ```json
 {
-  "tab": {"id": "...", "label": "AC DC", "type": "tab", "info": ""},
+  "tab": {"id": "...", "label": "Home Automation", "type": "tab", "info": ""},
   "nodes": [
-    {"id": "abc123", "type": "function", "name": "pv_strategy_func", "z": "tab-id", ...}
+    {"id": "abc123", "type": "function", "name": "Process sensor data", "z": "tab-id", "...":  "..."}
   ],
   "groups": [
-    {"id": "g1", "label": "PV Smart Charge", "nodes": ["n1", "n2", "n3"]}
+    {"id": "g1", "label": "Lighting Control", "nodes": ["n1", "n2", "n3"]}
   ],
-  "total_nodes": 154
+  "total_nodes": 85
 }
 ```
-
-**Name resolution:** Case-insensitive partial match. "ac dc" matches "AC DC". If ambiguous → return error with matching tab names.
 
 ---
 
@@ -59,11 +59,11 @@
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `query` | string | yes | Search term (name, type, or code snippet) |
-| `type` | string | no | Filter by node type (e.g., "function", "api-call-service") |
+| `type` | string | no | Filter by node type (e.g., "function", "mqtt in") |
 | `flow` | string | no | Filter by tab name or ID |
 | `max_results` | int | no | Limit results (default: 20) |
 
-**Search targets:** node.name, node.type, node.func (JS code), node.template, node.action
+**Search targets:** node.name, node.type, node.func (JS code), node.template, node.action, node.data
 
 **Returns:**
 ```json
@@ -71,20 +71,18 @@
   "results": [
     {
       "id": "abc123",
-      "name": "pv_strategy_func",
+      "name": "Process sensor data",
       "type": "function",
       "flow_id": "tab-id",
-      "flow_label": "AC DC",
+      "flow_label": "Home Automation",
       "match_in": "func",
-      "snippet": "if (msg.payload.soc < target) {..."
+      "snippet": "if (msg.payload.temperature > threshold) {..."
     }
   ],
-  "total": 5,
+  "total": 3,
   "truncated": false
 }
 ```
-
-**Snippet:** First 200 chars of matched field content.
 
 ---
 
@@ -100,7 +98,7 @@
 ```json
 {
   "node_id": "abc123",
-  "name": "pv_strategy_func",
+  "name": "Process sensor data",
   "code": "// Full JS code here...",
   "outputs": 1,
   "initialize": "",
@@ -108,37 +106,37 @@
 }
 ```
 
-**Error:** If node is not type "function" → return error with actual type.
+**Error:** If node is not type "function" → returns error with actual type.
 
 ---
 
 ## Tool 5: `nr_get_node_config`
-**Purpose:** Get full node object including wires, for any node type.
+**Purpose:** Get full node configuration including wires and connections.
 
 **Parameters:**
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `node_id` | string | yes | Any node ID |
 
-**Returns:** Full node object as-is from Node-RED API, plus:
+**Returns:** Full node object as-is from Node-RED API, plus computed fields:
 ```json
 {
-  ...all node fields...,
-  "_flow_label": "AC DC",
-  "_group_label": "PV Smart Charge",
+  "...all node fields...": "...",
+  "_flow_label": "Home Automation",
+  "_group_label": "Lighting Control",
   "_downstream": ["node-id-1", "node-id-2"],
   "_upstream": ["node-id-3"]
 }
 ```
 
-`_downstream` = nodes this node wires TO.
-`_upstream` = nodes that wire TO this node.
-`_group_label` = group containing this node (if any).
+- `_downstream` = nodes this node wires TO
+- `_upstream` = nodes that wire TO this node
+- `_group_label` = group containing this node (if any)
 
 ---
 
 ## Tool 6: `nr_get_flow_context`
-**Purpose:** Read flow-level context (used by SLC system, PV strategy, etc.)
+**Purpose:** Read flow-level context variables.
 
 **Parameters:**
 | Param | Type | Required | Description |
@@ -148,27 +146,18 @@
 
 **Returns (all keys):**
 ```json
-{
-  "flow_id": "tab-id",
-  "keys": ["pv_target_soc", "battery_efficiency", "slc_factors", "last_snapshot"]
-}
+{"flow_id": "tab-id", "keys": ["config", "last_run", "counters"]}
 ```
 
 **Returns (specific key):**
 ```json
-{
-  "flow_id": "tab-id",
-  "key": "slc_factors",
-  "value": {"hour_6": 1.15, "hour_7": 0.92, ...}
-}
+{"flow_id": "tab-id", "key": "config", "value": {"threshold": 25, "enabled": true}}
 ```
-
-**API endpoint:** `GET /context/flow/:id` — returns `{memory: {key: {msg: value, format: type}}}`. No separate endpoint for single key; we fetch full context and filter.
 
 ---
 
 ## Tool 7: `nr_safe_deploy`
-**Purpose:** Deploy changes to Node-RED with optimistic locking. THE critical tool that fixes the PUT bug.
+**Purpose:** Deploy changes to a node with optimistic locking. Uses GET→POST (never PUT). Preserves tab order.
 
 **Parameters:**
 | Param | Type | Required | Description |
@@ -177,35 +166,14 @@
 | `fields` | object | yes | Fields to update (patch, not replace) |
 | `description` | string | no | Deploy description for logs |
 
-**Immutable fields (cannot be changed):** `id`, `type`, `z` (tab membership).
-
-**Example call:**
-```json
-{
-  "node_id": "abc123",
-  "fields": {
-    "name": "pv_strategy_v5",
-    "func": "// Updated code\nconst target = msg.payload.target_soc;..."
-  },
-  "description": "Update PV strategy function to v5"
-}
-```
-
-**Algorithm:**
-1. `GET /flows` → get all flows + `rev`
-2. Find node with matching `node_id` in flows array
-3. Validate: node exists, fields are not immutable
-4. Apply field patches (merge, don't replace entire node)
-5. `POST /flows` with `{rev, flows}` + API v2 headers
-6. On 409 → return conflict error with suggestion to retry
-7. On success → return new rev + change summary
+**Immutable fields (cannot be changed):** `id`, `type`, `z`
 
 **Returns (success):**
 ```json
 {
   "success": true,
   "rev": "new-rev-hash",
-  "deployed_at": "2026-03-08T14:23:45Z",
+  "deployed_at": "2026-03-25T14:23:45+00:00",
   "node_id": "abc123",
   "fields_updated": ["name", "func"],
   "tab_order_preserved": true
@@ -217,19 +185,19 @@
 {
   "success": false,
   "error": "Conflict: flow modified by another client",
-  "suggestion": "Retry — will fetch fresh state automatically"
+  "suggestion": "Retry \u2014 will fetch fresh state automatically"
 }
 ```
 
 ---
 
 ## Tool 8: `nr_get_installed_modules`
-**Purpose:** List installed Node-RED modules and their node types. Use before creating nodes to know what types are available.
+**Purpose:** List installed Node-RED modules and their node types.
 
 **Parameters:**
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `query` | string | no | Filter by module name or node type containing this string |
+| `query` | string | no | Filter by module name or node type |
 
 **Returns:**
 ```json
@@ -238,27 +206,19 @@
     {
       "name": "node-red-contrib-home-assistant-websocket",
       "version": "0.72.2",
-      "types": ["ha-sensor", "ha-entity-config", "ha-api", ...],
-      "enabled": true
-    },
-    {
-      "name": "node-red-dashboard",
-      "version": "3.6.5",
-      "types": ["ui_tab", "ui_group", "ui_chart", ...],
+      "types": ["ha-sensor", "ha-entity-config", "ha-api"],
       "enabled": true
     }
   ],
-  "total": 2,
-  "query": null
+  "total": 1,
+  "query": "home-assistant"
 }
 ```
-
-**API endpoint:** `GET /nodes` with `Accept: application/json`, `Node-RED-API-Version: v2`
 
 ---
 
 ## Tool 9: `nr_inject`
-**Purpose:** Trigger an inject node to fire immediately. Use to test flows after deploy.
+**Purpose:** Trigger an inject node to fire immediately.
 
 **Parameters:**
 | Param | Type | Required | Description |
@@ -267,50 +227,31 @@
 
 **Returns:**
 ```json
-{
-  "success": true,
-  "node_id": "abc123",
-  "node_name": "Every 30min",
-  "message": "Inject triggered"
-}
+{"success": true, "node_id": "abc123", "node_name": "Every 30min", "message": "Inject triggered"}
 ```
-
-**Errors:** Node not found → NOT_FOUND. Node not type "inject" → VALIDATION.
-
-**API endpoint:** `POST /inject/:id`
 
 ---
 
 ## Tool 10: `nr_create_nodes`
-**Purpose:** Create one or more new nodes/groups in a single deploy. Batch operation for efficiency.
+**Purpose:** Create one or more new nodes/groups in a single deploy.
 
 **Parameters:**
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `nodes` | list[dict] | yes | Node dicts. Each must have `id`, `type`, `z` (tab ID; `""` for config nodes) |
+| `nodes` | list[dict] | yes | Node dicts with `id`, `type`, `z` (tab ID) |
 | `description` | string | no | Optional deploy note |
-
-**Required node fields:** `id` (unique), `type` (e.g. `function`, `inject`, `group`), `z` (target tab ID; empty for global config nodes).
 
 **Returns:**
 ```json
-{
-  "success": true,
-  "created": 2,
-  "node_ids": ["my_inject_01", "my_http_01"],
-  "rev": "new-rev-hash",
-  "description": "Add API fetch nodes to Weather tab"
-}
+{"success": true, "created": 2, "node_ids": ["node1", "node2"], "rev": "new-rev", "description": "Add API nodes"}
 ```
 
-**Errors:** Missing id/type/z → VALIDATION. Tab not found → VALIDATION. ID collision → VALIDATION. 409 Conflict → retried once automatically.
-
-**Algorithm:** GET /flows → validate → append nodes → POST /flows. Single retry on 409.
+Safety: validates target tab exists, checks for ID collisions, retries once on 409.
 
 ---
 
 ## Tool 11: `nr_delete_nodes`
-**Purpose:** Delete one or more nodes by ID. Cleans up group.nodes and wires references.
+**Purpose:** Delete one or more nodes. Cleans up group.nodes and wires references.
 
 **Parameters:**
 | Param | Type | Required | Description |
@@ -320,49 +261,32 @@
 
 **Returns:**
 ```json
-{
-  "success": true,
-  "deleted": 2,
-  "node_ids": ["n1", "n2"],
-  "rev": "new-rev-hash"
-}
+{"success": true, "deleted": 2, "node_ids": ["n1", "n2"], "rev": "new-rev"}
 ```
 
-**Safety:** Refuses to delete tabs. Use a separate flow to remove all nodes first.
-
-**Errors:** Nodes not found → VALIDATION. Attempt to delete tab → VALIDATION. 409 Conflict → retried once automatically.
+Safety: refuses to delete tabs, cleans up all references.
 
 ---
 
 ## Tool 12: `nr_install_module`
-**Purpose:** Install a new Node-RED module (npm package) from the registry.
+**Purpose:** Install a new Node-RED module (npm package).
 
 **Parameters:**
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `module_name` | string | yes | npm package name (e.g. `node-red-dashboard`) |
+| `module_name` | string | yes | npm package name |
 
 **Returns:**
 ```json
-{
-  "success": true,
-  "module": "node-red-dashboard",
-  "version": "3.6.5",
-  "types": ["ui_tab", "ui_group", ...],
-  "message": "Module 'node-red-dashboard' installed successfully"
-}
+{"success": true, "module": "node-red-dashboard", "version": "3.6.5", "types": ["ui_tab", "ui_group"], "message": "Module installed successfully"}
 ```
 
-**Errors:** Invalid name (empty, contains space) → VALIDATION. Module not found → VALIDATION. Already installed → VALIDATION.
-
-**Note:** Installation may take 30-60 seconds. Uses 120s timeout.
-
-**API endpoint:** `POST /nodes` with `{"module": "module-name"}`
+Note: Installation may take 30-60 seconds.
 
 ---
 
 ## Tool 13: `nr_get_debug_output`
-**Purpose:** Read debug output from flow context (v1). Use when a flow has a catch node that stores errors/debug data to flow context.
+**Purpose:** Read debug output from flow context.
 
 **Parameters:**
 | Param | Type | Required | Description |
@@ -370,18 +294,22 @@
 | `flow_id` | string | yes | Tab ID |
 | `key` | string | no | Context key (null = list all keys) |
 
-**Returns:** Same format as `nr_get_flow_context` — either `{flow_id, keys: [...]}` or `{flow_id, key, value}`.
-
-**Usage pattern:** Add a catch node + function node that stores last N errors to flow context. Trigger flow with `nr_inject`, then read via this tool. For richer real-time debug, WebSocket v2 is planned.
+Same format as `nr_get_flow_context`. Useful with catch nodes that store errors to flow context.
 
 ---
 
-## Error Codes (all tools)
+## Error Responses
 
-| Code | Meaning |
-|------|---------|
-| `AUTH_ERROR` | Bad credentials (401/403) |
-| `NOT_FOUND` | Node, flow, or key not found |
-| `CONFLICT` | Rev mismatch on deploy (409) |
-| `VALIDATION` | Invalid parameters or immutable field change |
-| `CONNECTION` | Cannot reach Node-RED |
+All errors are returned as JSON:
+```json
+{"error": "Description of what went wrong"}
+```
+
+| Scenario | Error message pattern |
+|----------|----------------------|
+| Bad credentials | `Authentication failed (401/403)` |
+| Node not found | `Node not found: <id>` |
+| Tab not found | `Tab not found: '<name>'` |
+| Rev conflict | `Conflict: flow modified by another client` |
+| Connection error | `Node-RED API error ...` |
+| Immutable field | `Cannot modify immutable fields: {id, type, z}` |

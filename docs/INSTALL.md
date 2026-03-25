@@ -1,60 +1,128 @@
 # nr-mcp — Installation Guide
 
 ## Prerequisites
+
 - Python 3.11+
-- `uv` installed (`brew install uv` or `pip install uv`)
-- Node-RED running on 192.168.1.31:1880 with Basic Auth
+- `uv` installed ([installation guide](https://docs.astral.sh/uv/getting-started/installation/))
+- Node-RED running with Admin API enabled
 
-## Step 1: Install from local repo
+## Step 1: Install nr-mcp
+
+### From GitHub (recommended)
+
 ```bash
-cd ~/Projects/aaGITHUB/node-red-mcp-custom
-uv tool install --force .
+uv tool install git+https://github.com/Texan-NXTassist/nr-mcp.git
 ```
-This creates `~/.local/bin/nr-mcp`.
 
-## Step 2: Create wrapper script
-Node-RED MCP (like ha-mcp) needs a wrapper because Claude Desktop starts MCP servers
-from a read-only working directory.
+### From local clone
 
-Create `~/.local/bin/nr-mcp-wrapper`:
 ```bash
-#!/bin/bash
-cd /tmp
-exec nr-mcp "$@"
+git clone https://github.com/Texan-NXTassist/nr-mcp.git
+cd nr-mcp
+uv tool install .
 ```
-Then: `chmod +x ~/.local/bin/nr-mcp-wrapper`
 
-## Step 3: Register in Claude Desktop config
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+This creates the `nr-mcp` command in `~/.local/bin/`.
+
+## Step 2: Configure your MCP client
+
+### Claude Desktop
+
+Edit your Claude Desktop config:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
-"nr-mcp": {
-  "command": "/Users/bartosz/.local/bin/nr-mcp-wrapper",
-  "env": {
-    "NR_URL": "http://192.168.1.31:1880",
-    "NR_USER": "op://AI / MCP / Dev/HASS Prox/Username",
-    "NR_PASS": "op://AI / MCP / Dev/HASS Prox/Password"
+{
+  "mcpServers": {
+    "nr-mcp": {
+      "command": "nr-mcp",
+      "env": {
+        "NR_URL": "http://localhost:1880",
+        "NR_USER": "your-username",
+        "NR_PASS": "your-password"
+      }
+    }
   }
 }
 ```
 
-## Step 4: Restart Claude Desktop
-Quit and reopen Claude Desktop. The new MCP should appear in tools.
+Alternatively, if using token-based auth:
 
-## Step 5: Test
-In Claude conversation, try:
-- "Use nr_get_flow_summary to show me all Node-RED tabs"
-- "Search for nodes containing 'pv_strategy'"
-- "Show me the function code for node XYZ"
+```json
+{
+  "mcpServers": {
+    "nr-mcp": {
+      "command": "nr-mcp",
+      "env": {
+        "NR_URL": "http://your-node-red-host:1880",
+        "NR_TOKEN": "your-access-token"
+      }
+    }
+  }
+}
+```
 
-## Post-install: Disable old mcp-node-red
-Once nr-mcp works, remove or comment out old `node-red` entry from
-`claude_desktop_config.json` to avoid confusion with 2 Node-RED MCPs.
+> **Note**: If Claude Desktop reports a working directory error, create a wrapper:
+> ```bash
+> #!/bin/bash
+> cd /tmp
+> exec nr-mcp "$@"
+> ```
+> Save as `~/.local/bin/nr-mcp-wrapper`, run `chmod +x` on it, and point `command` to the wrapper.
+
+### Cursor / VS Code
+
+Add to `.cursor/mcp.json` (project-level) or global MCP config:
+
+```json
+{
+  "mcpServers": {
+    "nr-mcp": {
+      "command": "nr-mcp",
+      "env": {
+        "NR_URL": "http://localhost:1880",
+        "NR_USER": "admin",
+        "NR_PASS": "your-password"
+      }
+    }
+  }
+}
+```
+
+## Step 3: Restart your MCP client
+
+Quit and reopen Claude Desktop / Cursor. The nr-mcp tools should appear in the available tools list.
+
+## Step 4: Test
+
+Try these prompts:
+- *"Use nr_get_flow_summary to show me all Node-RED tabs"*
+- *"Search for nodes containing 'mqtt'"*
+- *"Show me the function code for node [some-id]"*
 
 ## Updating
+
 ```bash
-cd ~/Projects/aaGITHUB/node-red-mcp-custom
-git pull  # if using git
+# From GitHub
+uv tool install --force git+https://github.com/Texan-NXTassist/nr-mcp.git
+
+# From local clone
+cd /path/to/nr-mcp
+git pull
 uv tool install --force .
 ```
-No wrapper patching needed (unlike the old npm mcp-node-red).
+
+## Troubleshooting
+
+### "Authentication failed (401)"
+Check that `NR_USER`/`NR_PASS` or `NR_TOKEN` match your Node-RED auth settings.
+
+### "Connection refused"
+Verify `NR_URL` points to your Node-RED instance and the Admin API is accessible.
+
+### "Working directory" error in Claude Desktop
+Use the wrapper script described in Step 2.
+
+### MCP tools not appearing
+Check Claude Desktop logs for startup errors. The `nr-mcp` command must be in your PATH.

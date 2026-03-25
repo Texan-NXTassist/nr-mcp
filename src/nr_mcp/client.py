@@ -1,4 +1,4 @@
-"""Node-RED HTTP client with Basic Auth and optimistic locking."""
+"""Node-RED HTTP client with auth and optimistic locking."""
 
 import os
 import httpx
@@ -22,16 +22,38 @@ class NRNotFoundError(NRError):
 
 
 class NRClient:
-    """Async HTTP client for Node-RED Admin API v2."""
+    """Async HTTP client for Node-RED Admin API v2.
+
+    Authentication methods (checked in order):
+    1. Bearer token: set NR_TOKEN env var
+    2. Basic Auth: set NR_USER + NR_PASS env vars
+    3. No auth: if none of the above are set (for unsecured instances)
+
+    Environment variables:
+        NR_URL:   Node-RED base URL (default: http://localhost:1880)
+        NR_TOKEN: Bearer token for token-based auth
+        NR_USER:  Username for Basic Auth
+        NR_PASS:  Password for Basic Auth
+    """
 
     def __init__(self):
-        self.url = os.environ.get("NR_URL", "http://192.168.1.31:1880")
+        self.url = os.environ.get("NR_URL", "http://localhost:1880")
+        token = os.environ.get("NR_TOKEN", "")
         user = os.environ.get("NR_USER", "")
         password = os.environ.get("NR_PASS", "")
-        self.auth = httpx.BasicAuth(user, password)
+
+        # Determine auth method
+        auth = None
+        headers = {}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        elif user:
+            auth = httpx.BasicAuth(user, password)
+
         self._client = httpx.AsyncClient(
             base_url=self.url,
-            auth=self.auth,
+            auth=auth,
+            headers=headers,
             timeout=30.0,
         )
 
@@ -104,7 +126,7 @@ class NRClient:
 
     def _check_response(self, r: httpx.Response):
         if r.status_code in (401, 403):
-            raise NRAuthError(f"Authentication failed ({r.status_code}). Check NR_USER, NR_PASS, NR_URL.")
+            raise NRAuthError(f"Authentication failed ({r.status_code}). Check NR_TOKEN or NR_USER/NR_PASS and NR_URL.")
         if r.status_code == 404:
             raise NRNotFoundError(f"Not found: {r.url}")
         if r.status_code >= 400:
