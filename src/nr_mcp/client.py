@@ -30,10 +30,13 @@ class NRClient:
     3. No auth: if none of the above are set (for unsecured instances)
 
     Environment variables:
-        NR_URL:   Node-RED base URL (default: http://localhost:1880)
-        NR_TOKEN: Bearer token for token-based auth
-        NR_USER:  Username for Basic Auth
-        NR_PASS:  Password for Basic Auth
+        NR_URL:        Node-RED base URL (default: http://localhost:1880)
+        NR_TOKEN:      Bearer token for token-based auth
+        NR_USER:       Username for Basic Auth
+        NR_PASS:       Password for Basic Auth
+        NR_VERIFY_SSL: Set to 0/false/no to disable TLS certificate
+                       verification (useful for self-signed certs).
+                       Defaults to 1 (verification enabled).
     """
 
     def __init__(self):
@@ -50,11 +53,13 @@ class NRClient:
         elif user:
             auth = httpx.BasicAuth(user, password)
 
+        verify_ssl = os.environ.get("NR_VERIFY_SSL", "1").strip().lower() not in ("0", "false", "no")
         self._client = httpx.AsyncClient(
             base_url=self.url,
             auth=auth,
             headers=headers,
             timeout=30.0,
+            verify=verify_ssl,
         )
 
     async def get_flows(self) -> tuple[list[dict], str]:
