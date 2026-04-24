@@ -1,4 +1,4 @@
-"""MCP server entry point for nr-mcp."""
+﻿"""MCP server entry point for nr-mcp."""
 
 import json
 
@@ -35,10 +35,11 @@ async def nr_get_flow_summary() -> str:
 
 
 @mcp.tool()
-async def nr_get_flow(name_or_id: str) -> str:
-    """Get a single Node-RED tab with all its nodes and groups. Accepts tab name (case-insensitive) or tab ID."""
+async def nr_get_flow(name_or_id: str, fields: list[str] | None = None) -> str:
+    """Get a single Node-RED tab with all its nodes and groups. Accepts tab name (case-insensitive) or tab ID.
+    fields: optional list of node keys to return, e.g. ["id","name","type","wires"] to get a compact wiring view of a large flow."""
     try:
-        result = await tools.get_flow(client, name_or_id)
+        result = await tools.get_flow(client, name_or_id, fields=fields)
         return _handle_result(result)
     except NRError as e:
         return _error(str(e))
@@ -94,6 +95,18 @@ async def nr_get_node_config(node_id: str) -> str:
 
 
 @mcp.tool()
+async def nr_get_global_context(key: str | None = None) -> str:
+    """Read Node-RED global context variables (context.global.*). Pass key=null to list all keys, or a specific key like 'scheme_today' or 'data' to get its value."""
+    try:
+        result = await tools.get_global_context(client, key)
+        return _handle_result(result)
+    except NRError as e:
+        return _error(str(e))
+    except Exception as e:
+        return _error(f"Unexpected error: {type(e).__name__}: {e}")
+
+
+@mcp.tool()
 async def nr_get_flow_context(flow_id: str, key: str | None = None) -> str:
     """Read Node-RED flow context variables. Pass key=null to list all keys, or a specific key to get its value."""
     try:
@@ -111,7 +124,7 @@ async def nr_safe_deploy(
     fields: dict,
     description: str | None = None,
 ) -> str:
-    """Deploy changes to a Node-RED node with optimistic locking. Uses correct GET\u2192POST pattern (never PUT). Preserves tab order."""
+    """Deploy changes to a Node-RED node with optimistic locking. Uses correct GET->POST pattern (never PUT). Preserves tab order."""
     try:
         result = await tools.safe_deploy(
             client,
@@ -119,6 +132,35 @@ async def nr_safe_deploy(
             fields,
             description=description,
         )
+        return _handle_result(result)
+    except NRError as e:
+        return _error(str(e))
+    except Exception as e:
+        return _error(f"Unexpected error: {type(e).__name__}: {e}")
+
+
+@mcp.tool()
+async def nr_safe_deploy_many(
+    updates: list[dict],
+    description: str | None = None,
+) -> str:
+    """Deploy field patches to multiple nodes in a single atomic GET->POST. Avoids rev conflicts when wiring several nodes at once.
+    updates: list of {"node_id": str, "fields": dict} objects."""
+    try:
+        result = await tools.safe_deploy_many(client, updates, description=description)
+        return _handle_result(result)
+    except NRError as e:
+        return _error(str(e))
+    except Exception as e:
+        return _error(f"Unexpected error: {type(e).__name__}: {e}")
+
+
+@mcp.tool()
+async def nr_add_wire(from_id: str, output_index: int, to_id: str) -> str:
+    """Add a wire from one node output pin to another node. Non-destructive: existing wires are preserved.
+    output_index: 0-based output pin number (most nodes have only output 0)."""
+    try:
+        result = await tools.add_wire(client, from_id, output_index, to_id)
         return _handle_result(result)
     except NRError as e:
         return _error(str(e))
@@ -194,7 +236,7 @@ async def nr_install_module(module_name: str) -> str:
 
 @mcp.tool()
 async def nr_get_debug_output(flow_id: str, key: str | None = None) -> str:
-    """Read debug output from flow context. Use when a flow has a catch node that stores errors/debug data to flow context. Pass key=null to list all context keys. Trigger flow with nr_inject first, then read this."""
+    """Read debug output from flow context (use when a flow stores debug data via a catch/change node to flow context). Pass key=null to list all keys."""
     try:
         result = await tools.get_debug_output(client, flow_id, key)
         return _handle_result(result)
@@ -205,7 +247,7 @@ async def nr_get_debug_output(flow_id: str, key: str | None = None) -> str:
 
 
 def main():
-    """Entry point for uv tool install."""
+    """Entry point."""
     mcp.run(transport="stdio")
 
 
