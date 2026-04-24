@@ -44,8 +44,12 @@ async def get_flow_summary(client: NRClient) -> dict:
     }
 
 
-async def get_flow(client: NRClient, name_or_id: str) -> dict:
-    """Get single tab by name or ID with all nodes and groups."""
+async def get_flow(client: NRClient, name_or_id: str, fields: list[str] | None = None) -> dict:
+    """Get single tab by name or ID with all nodes and groups.
+
+    fields: optional list of node keys to keep (e.g. ["id","name","type","wires"]).
+    Omit to return full node objects.
+    """
     flows, _ = await client.get_flows()
     tabs = [f for f in flows if f.get("type") == "tab"]
 
@@ -69,6 +73,10 @@ async def get_flow(client: NRClient, name_or_id: str) -> dict:
     tab_id = tab["id"]
     nodes = [f for f in flows if f.get("z") == tab_id and f.get("type") != "group"]
     groups = [f for f in flows if f.get("z") == tab_id and f.get("type") == "group"]
+
+    if fields:
+        field_set = set(fields) | {"id", "type", "z"}  # always keep identity fields
+        nodes = [{k: v for k, v in n.items() if k in field_set} for n in nodes]
 
     return {
         "tab": {"id": tab["id"], "label": tab.get("label", ""), "type": "tab", "info": tab.get("info", "")},
@@ -184,6 +192,19 @@ async def get_node_config(client: NRClient, node_id: str) -> dict:
     return result
 
 
+async def get_global_context(client: NRClient, key: str | None = None) -> dict:
+    """Read Node-RED global context. Returns all keys (key=None) or a single key's value."""
+    data = await client.get_global_context()
+    memory = data.get("memory", {})
+
+    if key:
+        if key not in memory:
+            raise NRNotFoundError(f"Global context key not found: '{key}'")
+        value = memory[key].get("msg")
+        return {"scope": "global", "key": key, "value": value}
+    return {"scope": "global", "keys": list(memory.keys())}
+
+
 async def get_flow_context(client: NRClient, flow_id: str, key: str | None = None) -> dict:
     """Read flow context. API returns {memory: {key: {msg: value, format: type}}}."""
     data = await client.get_context(flow_id)
@@ -242,6 +263,96 @@ async def safe_deploy(client: NRClient, node_id: str, fields: dict,
         "node_id": node_id,
         "fields_updated": list(fields.keys()),
         "tab_order_preserved": True,
+    }
+
+
+async def safe_deploy_many(client: NRClient, updates: list[dict],
+                            description: str | None = None) -> dict:
+    """Deploy field patches to multiple nodes in a single GET→modify→POST.
+
+    updates: list of {"node_id": str, "fields": dict}
+    """
+    IMMUTABLE_FIELDS = {"id", "type", "z"}
+
+    for update in updates:
+        bad_fields = set(update.get("fields", {}).keys()) & IMMUTABLE_FIELDS
+        if bad_fields:
+            return {"success": False, "error": f"Cannot modify immutable fields: {bad_fields} on node '{update['node_id']}'"}
+
+    flows, rev = await client.get_flows()
+
+    node_index = {f["id"]: i for i, f in enumerate(flows)}
+
+    missing = [u["node_id"] for u in updates if u["node_id"] not in node_index]
+    if missing:
+        raise NRNotFoundError(f"Nodes not found: {missing}")
+
+    for update in updates:
+        idx = node_index[update["node_id"]]
+        for key, value in update["fields"].items():
+            flows[idx][key] = value
+
+    from datetime import datetime, timezone
+    try:
+        new_rev = await client.post_flows(flows, rev)
+    except NRConflictError:
+        return {
+            "success": False,
+            "error": "Conflict: flow modified by another client (rev mismatch)",
+            "suggestion": "Retry — will fetch fresh state automatically",
+        }
+
+    return {
+        "success": True,
+        "rev": new_rev,
+        "deployed_at": datetime.now(timezone.utc).isoformat(),
+        "nodes_updated": [u["node_id"] for u in updates],
+        "description": description,
+    }
+
+
+async def add_wire(client: NRClient, from_id: str, output_index: int, to_id: str) -> dict:
+    """Add a wire from one node's output to another node. Non-destructive: preserves existing wires."""
+    flows, rev = await client.get_flows()
+
+    node_ids = {f["id"] for f in flows}
+    if from_id not in node_ids:
+        raise NRNotFoundError(f"Source node not found: '{from_id}'")
+    if to_id not in node_ids:
+        raise NRNotFoundError(f"Target node not found: '{to_id}'")
+
+    node_idx = next(i for i, f in enumerate(flows) if f["id"] == from_id)
+    node = flows[node_idx]
+
+    wires = [list(w) for w in node.get("wires", [])]
+    # Extend wires list if output_index exceeds current length
+    while len(wires) <= output_index:
+        wires.append([])
+
+    if to_id in wires[output_index]:
+        return {"success": True, "message": f"Wire already exists: {from_id}[{output_index}] → {to_id}", "already_existed": True}
+
+    wires[output_index].append(to_id)
+    flows[node_idx]["wires"] = wires
+
+    from datetime import datetime, timezone
+    try:
+        new_rev = await client.post_flows(flows, rev)
+    except NRConflictError:
+        return {
+            "success": False,
+            "error": "Conflict: flow modified by another client (rev mismatch)",
+            "suggestion": "Retry",
+        }
+
+    return {
+        "success": True,
+        "rev": new_rev,
+        "deployed_at": datetime.now(timezone.utc).isoformat(),
+        "from_id": from_id,
+        "output_index": output_index,
+        "to_id": to_id,
+        "wires_after": wires,
     }
 
 
@@ -410,7 +521,6 @@ async def install_module(client: NRClient, module_name: str) -> dict:
     }
 
 
-async def get_debug_output(client: NRClient, flow_id: str, key: str | None = None) -> dict:
-    """Read debug output from flow context (v1). Use when a flow has a catch node
-    that stores errors/debug data to flow context. Pass key=None to list all keys."""
+async def get_debug_output(client, flow_id: str, key=None) -> dict:
+    """Read debug output from flow context. Alias for get_flow_context."""
     return await get_flow_context(client, flow_id, key)

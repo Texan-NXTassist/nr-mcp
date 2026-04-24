@@ -50,11 +50,13 @@ class NRClient:
         elif user:
             auth = httpx.BasicAuth(user, password)
 
+        verify_ssl = os.environ.get("NR_VERIFY_SSL", "1").strip().lower() not in ("0", "false", "no")
         self._client = httpx.AsyncClient(
             base_url=self.url,
             auth=auth,
             headers=headers,
             timeout=30.0,
+            verify=verify_ssl,
         )
 
     async def get_flows(self) -> tuple[list[dict], str]:
@@ -85,6 +87,12 @@ class NRClient:
         """GET /context/flow/:id — read flow context. Returns raw API response."""
         path = f"/context/flow/{flow_id}"
         r = await self._client.get(path)
+        self._check_response(r)
+        return r.json()
+
+    async def get_global_context(self) -> dict:
+        """GET /context/global — read global context. Returns raw API response."""
+        r = await self._client.get("/context/global")
         self._check_response(r)
         return r.json()
 
